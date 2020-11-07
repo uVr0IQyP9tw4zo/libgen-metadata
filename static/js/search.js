@@ -1,0 +1,200 @@
+"use strict";
+
+const options = {}
+
+function loadOptions() {
+    options.fields = []
+    for (const x in corpus.data) options.fields.push(x);
+    options.fields.sort();
+
+    options.searchFields = corpus.options.searchFields || options.fields;
+    options.searchFieldsDefault = corpus.options.searchFieldsDefault || options.searchFields;
+    options.filterFields = corpus.options.filterFields || [];
+    options.displayFields = corpus.options.displayFields || options.fields;
+
+    options.displayFieldsVisible = {};
+    options.searchFieldsVisible = {};
+    options.filterFieldsVisible = {};
+    for (const field of options.fields) {
+        const display = (corpus.options.fieldsVisible && corpus.options.fieldsVisible[field]) || field;
+        options.displayFieldsVisible[field] = (corpus.options.displayFieldsVisible && corpus.options.displayFieldsVisible[field]) || display;
+        options.searchFieldsVisible[field] = (corpus.options.searchFieldsVisible && corpus.options.searchFieldsVisible[field]) || display;
+        options.filterFieldsVisible[field] = (corpus.options.filterFieldsVisible && corpus.options.filterFieldsVisible[field]) || display;
+    }
+
+    options.filters = {};
+    options.filtersVisible = {};
+    for (const filterField of options.filterFields) {
+        options.filters[filterField] = (corpus.options.filters && corpus.options.filters[filterField]) || []; // if(slow) Compute frequent values instead
+        options.filtersVisible[filterField] = {};
+        for (const filterOption of options.filters[filterField]) {
+            options.filtersVisible[filterField][filterOption] = (corpus.options.filtersVisible && corpus.options.filtersVisible[filterField] && corpus.options.filtersVisible[filterField][filterOption]) || filterOption;
+        }
+    }
+}
+
+// TODO: Show loading bar while searching
+// TODO: Show ms search time in top-right after each search
+// TODO: Allow ordering search results
+// TODO: Load all search results, not just 1000, but do it gradually
+function search() {
+    const loadSearchResults = startLoad("searching");
+    const computeResults = startLoad("computing results");
+    const form = document.getElementById("search");
+    const searchTerm = document.getElementById("q").value; // allow wildcard, regex search
+    const formField = document.getElementById("field").value;
+    const searchFields = formField == "*" ? options.searchFieldsDefault : [formField];
+    const max_results = 1000;
+    const searchRegex = RegExp("\\b"+searchTerm+"\\b", 'i');
+    let filters = {};
+    for (const filterField of options.filterFields) {
+        const e = document.getElementById("filter-" + filterField);
+        if (e && e.value != "*") filters[filterField] = e.value;
+    }
+
+    let results = [];
+    for (let i=0; i<corpus.data.id.length && results.length<max_results; i++) {
+        let found = false;
+        let matchFilter = true;
+        for (const [filterField, filterValue] of Object.entries(filters)) {
+            if (corpus.data[filterField][i] != filterValue) matchFilter = false;
+        }
+        if (!matchFilter) continue;
+        for (const searchField of searchFields) {
+            if (searchRegex.test(corpus.data[searchField][i])) {
+                found = true;
+            }
+        }
+        if (!found) continue;
+        results.push(i);
+    }
+
+    stopLoad(computeResults, "computed results");
+    const taskDisplayResults = startLoad("displaying results");
+    displayResults(results);
+    stopLoad(taskDisplayResults, "displayed results");
+    stopLoad(loadSearchResults, "search", true);
+    return false;
+}
+
+function dropdown(id, class_, displayName, selectValues, selectText) {
+    const selectLabel = document.createElement("label");
+    selectLabel.setAttribute("for", id);
+    selectLabel.setAttribute("class", class_);
+    selectLabel.appendChild(document.createTextNode(displayName));
+
+    const select = document.createElement("select");
+    select.setAttribute("name", id);
+    select.setAttribute("id", id);
+    select.setAttribute("class", class_);
+    const wildcard = document.createElement("option");
+    wildcard.setAttribute("value", "*");
+    wildcard.setAttribute("selected", "true");
+    wildcard.appendChild(document.createTextNode("-all-"));
+    select.appendChild(wildcard);
+    for (const selectValue of selectValues) {
+        const displayValue = selectText[selectValue];
+
+        const option = document.createElement("option");
+        option.setAttribute("value", selectValue);
+        option.appendChild(document.createTextNode(displayValue));
+        select.appendChild(option);
+    }
+    return [selectLabel, select];
+}
+
+function setupForm() {
+    //const search_options = document.getElementById("search-options");
+    const search_options = document.getElementById("options");
+    search_options.innerHTML = '';
+    //const filter_options = document.getElementById("filter-options");
+    const filter_options = document.getElementById("options");
+    filter_options.innerHTML = '';
+
+    // Search fields
+    const fieldSelect = dropdown("field", "search-option", "Search in", options.searchFields, options.searchFieldsVisible);
+    for (const x of fieldSelect) search_options.appendChild(x);
+
+    // Filters
+    for (const filterField of options.filterFields) {
+        const filterSelect = dropdown(
+            "filter-"+filterField,
+            "filter-option",
+            options.filterFieldsVisible[filterField],
+            options.filters[filterField],
+            options.filtersVisible[filterField],
+        );
+        for (const x of filterSelect) filter_options.appendChild(x);
+    }
+}
+
+function displayResults(results) {
+    const table = document.getElementById("results");
+    table.innerHTML = '';
+    const header = document.createElement("tr");
+    header.setAttribute("class", "header");
+    for (const displayField of options.displayFields) {
+        const displayFieldText = options.displayFieldsVisible[displayField];
+
+        const colHeader = document.createElement("th");
+        colHeader.appendChild(document.createTextNode(displayFieldText));
+        header.appendChild(colHeader);
+    }
+    table.appendChild(header);
+    for (const i of results) {
+        const row = document.createElement("tr");
+        for (const displayField of options.displayFields) {
+            const data = corpus.data[displayField][i];
+
+            const cell = document.createElement("td");
+            cell.appendChild(document.createTextNode(data));
+            row.appendChild(cell);
+        }
+        table.appendChild(row);
+    }
+}
+
+function startLoad(part, topLevel) {
+    const loadPart = {
+        name: part,
+        time: Date.now(),
+    };
+    //const log = document.getElementById("loading-log");
+    const active = document.getElementById("loading-active");
+    active.innerHTML = part;
+    if (topLevel) active.className = "loading";
+    return loadPart;
+}
+
+function stopLoad(loadPart, name, topLevel) {
+    //const log = document.getElementById("loading-log");
+    const active = document.getElementById("loading-active");
+    const duration = Date.now() - loadPart.time;
+    const message = name + " in " + duration + "ms";
+    active.innerHTML = message;
+    if (topLevel) {
+        active.className = "loaded";
+        //log.className = "loaded";
+        //log.innerHTML += "";
+    } else {
+        //log.innerHTML += message + "<br/>"
+    }
+}
+
+const loadAll = startLoad("loading search index");
+const loadStrings = startLoad("reading string data");
+window.onload = function() {
+    stopLoad(loadStrings, "read all string data");
+    const parseJSON = startLoad("parsing JSON");
+    for (const field in corpus.data) {
+        if (typeof corpus.data[field] == "string") {
+            const loadParse = startLoad('parsing json for: ' + field);
+            corpus.data[field] = JSON.parse(corpus.data[field]);
+            stopLoad(loadParse, "parsed json for: " + field);
+        }
+    }
+    stopLoad(parseJSON, "parsed JSON")
+    loadOptions();
+    stopLoad(loadAll, "loaded search index", true);
+    setupForm();
+}
