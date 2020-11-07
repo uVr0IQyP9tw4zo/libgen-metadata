@@ -15,7 +15,7 @@ function displayResults(results) {
 
     for (const i of results) {
         const row = document.createElement("tr");
-        const rowData = calculateRow(corpus.data, i);
+        const rowData = calculateRow(i);
         for (const col of cols) {
             const datum = rowData[col];
             const tdClass = "data-" + col;
@@ -41,8 +41,8 @@ function displayResults(results) {
     }
 }
 
-function calculateRow(data, i) {
-    const links_href = calculateLinks(data, i);
+function calculateRow(i) {
+    const links_href = calculateLinks(i);
     const links_td = document.createElement("td");
     for (let i=0; i<links_href.length; i++) {
         const link_a = document.createElement("a");
@@ -53,24 +53,24 @@ function calculateRow(data, i) {
     }
 
     const title_td = document.createElement("td");
-    if (data["series"][i]) {
+    if (getData("series", i)) {
         const series_span = document.createElement("span");
-        series_span.appendChild(document.createTextNode(data["series"][i])); // TODO: search by series link
+        series_span.appendChild(document.createTextNode(getData("series", i))); // TODO: search by series link
         series_span.setAttribute("class", "data-series");
         title_td.appendChild(series_span);
         title_td.appendChild(document.createElement("br"));
     }
     const title_span = document.createElement("span");
-    title_span.appendChild(document.createTextNode(data["title"][i]));
+    title_span.appendChild(document.createTextNode(getData("title", i)));
     title_td.appendChild(title_span);
 
     return {
-        "Id": data["collection"][i] + ":" + data["id"][i],
-        "Author(s)": data["author"][i], // TODO: search by author
+        "Id": getData("collection", i) + ":" + getData("id", i),
+        "Author(s)": getData("author", i), // TODO: search by author
         "Title": title_td,
-        "Year": data["year"][i] == "0" ? "" : data["year"][i],
-        "Language": data["language"][i].replace(/,([^ ])/g, ', $1'),
-        "File": data["extension"][i] + " / " + humanReadableBytes(data["filesize"][i]),
+        "Year": getData("year", i) == "0" ? "" : getData("year", i),
+        "Language": getData("language", i).replace(/,([^ ])/g, ', $1'),
+        "File": getData("extension", i) + " / " + humanReadableBytes(getData("filesize", i)),
         "Download": links_td,
     };
 }
@@ -91,18 +91,18 @@ function humanReadableBytes(bytes) {
     return gb + "GB";
 }
 
-function calculateLinks(data, i) {
-    const ff = (data["collection"][i] == "ff");
-    const lg = (data["collection"][i] == "lg");
-    const MD5 = data["md5"][i].toUpperCase();
-    const md5 = data["md5"][i].toLowerCase();
-    const id = data["id"][i];
-    const filename = data["title"][i] + "." + data["extension"][i];
+function calculateLinks(i) {
+    const ff = (getData("collection", i) == "ff");
+    const lg = (getData("collection", i) == "lg");
+    const MD5 = getData("md5", i).toUpperCase();
+    const md5 = getData("md5", i).toLowerCase();
+    const id = getData("id", i);
+    const filename = getData("title", i) + "." + getData("extension", i);
 
     let links = [];
 
-    const torrent_group = data["torrent_group"][i];
-    const torrent_file_num = data["torrent_file_num"][i];
+    const torrent_group = getData("torrent_group", i);
+    const torrent_file_num = getData("torrent_file_num", i);
     if (typeof(torrent_group) == 'number') {
         let torrent_filename = "";
         if (lg && torrent_group == 0) {
@@ -113,7 +113,7 @@ function calculateLinks(data, i) {
             torrent_filename = `f_${torrent_group*1000}.torrent`;
         }
         
-        const torrent_infohash = corpus.infohash[`${data["collection"][i][0]}${torrent_group}`];
+        const torrent_infohash = corpus.infohash[`${getData("collection", i)[0]}${torrent_group}`];
         if (torrent_infohash) {
             links.push(['magnet', `magnet:?xt=urn:btih:${torrent_infohash}&so=${torrent_file_num}`]); // BEP 53 (select one file). works like normal magnet link if this fails in clients I tested
         }
@@ -127,7 +127,7 @@ function calculateLinks(data, i) {
         } 
     }
 
-    const ipfs_cid = data["ipfs_cid"][i];
+    const ipfs_cid = getData("ipfs_cid", i);
     if (ipfs_cid) {
         links.push(['ipfs-gateway', `https://ipfs.io/ipfs/${ipfs_cid}?filename=${filename}`]);
         links.push(['ipfs-gateway', `https://cloudflare-ipfs.com/ipfs/${ipfs_cid}?filename=${filename}`]);

@@ -73,8 +73,11 @@ libgen_rar=`find source_data -iname 'libgen*.rar' -and -not -iname 'libgen_compa
 
 # Generate torrent index
 [ -s output/torrent.csv.gz ] || {
-    if [ -s source_file/torrent.csv.gz ]; then
-        cp source_file/torrent.csv.gz output/torrent.csv.gz
+    if [ -s source_data/torrent_ff.csv.gz ]; then
+        {
+            echo "collection,group,torrent,infohash,file_num,md5"
+            zcat source_data/torrent_ff.csv.gz source_data/torrent_lg.csv.gz
+        } | gzip >output/torrent.csv.gz
     else
         assert_prog python3 "Python3 is required for make.sh"
         # TODO: add and check requirements.txt
@@ -89,9 +92,14 @@ libgen_rar=`find source_data -iname 'libgen*.rar' -and -not -iname 'libgen_compa
 }
 
 # generate the search site
-#[ -s output/html/index.html ] || {
-    cp -r static -T output/site
+mkdir -p output/site/html
+mkdir -p output/site/css
+mkdir -p output/site/js
+#[ -s output/site/css/search.css ] || {
+    cp -r static/css/* -t output/site/css
+    cp -r static/js/* -t output/site/js
 #}
+
 [ -s output/site/js/corpus.js ] || {
     python3 csv2json_python/csv2json.py
 }

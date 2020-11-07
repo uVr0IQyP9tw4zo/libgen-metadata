@@ -11,6 +11,8 @@ function loadOptions() {
     options.searchFieldsDefault = corpus.options.searchFieldsDefault || options.searchFields;
     options.filterFields = corpus.options.filterFields || [];
     options.displayFields = corpus.options.displayFields || options.fields;
+    options.batchedData = !!corpus.options.batchedData;
+    options.batchSize = corpus.options.batchSize || (options.batchedData && corpus.data.id && corpus.data.id[0].length) || -999;
 
     options.displayFieldsVisible = {};
     options.searchFieldsVisible = {};
@@ -30,6 +32,14 @@ function loadOptions() {
         for (const filterOption of options.filters[filterField]) {
             options.filtersVisible[filterField][filterOption] = (corpus.options.filtersVisible && corpus.options.filtersVisible[filterField] && corpus.options.filtersVisible[filterField][filterOption]) || filterOption;
         }
+    }
+}
+
+function getData(field, i) {
+    if (options.batchedData) {
+        return corpus.data[field][Math.floor(i/options.batchSize)][i % options.batchSize];
+    } else {
+        return corpus.data[field][i];
     }
 }
 
@@ -53,15 +63,15 @@ function search() {
     }
 
     let results = [];
-    for (let i=0; i<corpus.data.id.length && results.length<max_results; i++) {
+    for (let i=0; i<corpus.dataLength && results.length<max_results; i++) {
         let found = false;
         let matchFilter = true;
         for (const [filterField, filterValue] of Object.entries(filters)) {
-            if (corpus.data[filterField][i] != filterValue) matchFilter = false;
+            if (getData(filterField, i) != filterValue) matchFilter = false;
         }
         if (!matchFilter) continue;
         for (const searchField of searchFields) {
-            if (searchRegex.test(corpus.data[searchField][i])) {
+            if (searchRegex.test(getData(searchField, i))) {
                 found = true;
             }
         }
@@ -144,7 +154,7 @@ function displayResults(results) {
     for (const i of results) {
         const row = document.createElement("tr");
         for (const displayField of options.displayFields) {
-            const data = corpus.data[displayField][i];
+            const data = getData(displayField, i);
 
             const cell = document.createElement("td");
             cell.appendChild(document.createTextNode(data));
@@ -186,12 +196,27 @@ const loadStrings = startLoad("reading string data");
 window.onload = function() {
     stopLoad(loadStrings, "read all string data");
     const parseJSON = startLoad("parsing JSON");
-    for (const field in corpus.data) {
-        if (typeof corpus.data[field] == "string") {
+    if (corpus.options.batchedData) {
+        for (const field in corpus.data) {
             const loadParse = startLoad('parsing json for: ' + field);
-            corpus.data[field] = JSON.parse(corpus.data[field]);
+            for (const index in corpus.data[field]) {
+                if (typeof corpus.data[field][index] == "string") {
+                    corpus.data[field][index] = JSON.parse(corpus.data[field][index]);
+                }
+            }
             stopLoad(loadParse, "parsed json for: " + field);
+            if (corpus.data[field].length == 1) corpus.dataLength = corpus.data[field][0].length;
+            else corpus.dataLength = corpus.data[field][0].length * (corpus.data[field].length-1) + corpus.data[field][corpus.data[field].length-1].length;
         }
+    } else {
+        for (const field in corpus.data) {
+            if (typeof corpus.data[field] == "string") {
+                const loadParse = startLoad('parsing json for: ' + field);
+                corpus.data[field] = JSON.parse(corpus.data[field]);
+                stopLoad(loadParse, "parsed json for: " + field);
+            }
+        }
+        corpus.dataLength = corpus.data[field].length;
     }
     stopLoad(parseJSON, "parsed JSON")
     loadOptions();

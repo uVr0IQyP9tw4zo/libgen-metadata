@@ -18,6 +18,7 @@ FIELD_DISPLAY = {
     "extension": "Format"
 }
 DISPLAY = {**{ x: x.title() for x in WHITELIST }, **{ "extension": "Format" }}
+BATCH_SIZE = 100000
 OPTIONS = {
     "filterFields": FILTER_FIELDS,
     "searchFields": SEARCH_FIELDS,
@@ -32,6 +33,7 @@ OPTIONS = {
             "ff": "Fiction",
         }
     },
+    "batchedData": True,
 }
 
 if __name__ == "__main__":
@@ -105,7 +107,7 @@ if __name__ == "__main__":
                 for i in ids:
                     group, file_num = int(row["group"]), int(row["file_num"])
                     assert group % 1000 == 0
-                    group = group / 1000
+                    group = group // 1000
                     full_group = data["collection"][i][0] + str(group)
                     infohash[full_group] = row["infohash"]
                     data["torrent_group"][i] = group
@@ -130,16 +132,37 @@ if __name__ == "__main__":
             print(f, orig//1000000, dedup//1000000, compressed//1000000, round(orig/compressed, 2), file=sys.stderr)
         print("total", t_orig//1000000, t_dedup//1000000, t_compressed//1000000, t_orig/t_compressed, file=sys.stderr)
 
-    # Works in Chrome and Firefox. Putting in literal javascript object hangs Chrome tab.
-    # Load time     Chrome      Firefox
-    # FF            37s         6s
-    # LG            120s        16s
+    # Works in Chrome and Firefox. Putting in literal javascript object hangs Chrome tab, so use a string.
+    # Combined FF + LG
+    #
+    # One file per field
+    #               Chrome      Firefox
+    # Load time     140s        20s
+    # Search time   100ms       200ms
+    #
+    # One file per 100K records per field
+    # Load time     55s         12s
+    # Search time   200ms       100ms
     keys = [x for x in WHITELIST if x in data.keys()]
     with open("output/site/js/corpus.js", "w") as f:
-        print("const corpus={{\"options\":{},\"data\":{{}}, \"infohash\":{}}};".format(json.dumps(options), json.dumps(infohash)), file=f)
+        data_init = { k: [] for k in WHITELIST }
+        print("const corpus={{\"options\":{},\"data\":{}, \"infohash\":{}}};".format(json.dumps(options), json.dumps(data_init), json.dumps(infohash)), file=f)
 
+    corpus_files = ["../js/corpus.js"]
     for i, key in enumerate(keys):
-        d = data[key]
-        json_data = json.dumps(d, separators=(",",":"))
-        with open("output/site/js/corpus_{}.js".format(key), "w") as f:
-            print("corpus.data['{key}'] = {str_data};".format(key=key, str_data=json.dumps(json_data)), file=f)
+        for batch, batch_start in enumerate(range(0, data_length, BATCH_SIZE)):
+            d = data[key][batch_start:batch_start+BATCH_SIZE]
+            json_data = json.dumps(d, separators=(",",":"))
+            filename = "corpus_{}.{}.js".format(key, batch)
+            with open("output/site/js/{}".format(filename), "w") as f:
+                print("corpus.data['{key}'][{batch}] = {str_data};".format(key=key, batch=batch, str_data=json.dumps(json_data)), file=f)
+                corpus_files.append("../js/{}".format(filename))
+
+    with open("static/html/index.html", "r") as template:
+        with open("output/site/html/index.html", "w") as out:
+            for line in template:
+                if "INSERT CORPUS HERE" in line:
+                    for corpus_file in corpus_files:
+                        print('  <script type="text/javascript" src="{}"></script>'.format(corpus_file), file=out)
+                else:
+                    out.write(line)
