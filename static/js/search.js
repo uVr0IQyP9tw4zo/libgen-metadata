@@ -26,12 +26,14 @@ function loadOptions() {
 
     options.filters = {};
     options.filtersVisible = {};
+    options.defaultFilter = {};
     for (const filterField of options.filterFields) {
-        options.filters[filterField] = (corpus.options.filters && corpus.options.filters[filterField]) || []; // if(slow) Compute frequent values instead
+        options.filters[filterField] = (corpus.options.filters && corpus.options.filters[filterField]) || [];
         options.filtersVisible[filterField] = {};
         for (const filterOption of options.filters[filterField]) {
             options.filtersVisible[filterField][filterOption] = (corpus.options.filtersVisible && corpus.options.filtersVisible[filterField] && corpus.options.filtersVisible[filterField][filterOption]) || filterOption;
         }
+        options.defaultFilter[filterField] = (corpus.options.defaultFilters && corpus.options.defaultFilters[filterField]);
     }
 }
 
@@ -44,7 +46,6 @@ function getData(field, i) {
 }
 
 // TODO: Show loading bar while searching
-// TODO: Show ms search time in top-right after each search
 // TODO: Allow ordering search results
 // TODO: Load all search results, not just 1000, but do it gradually
 function search() {
@@ -87,7 +88,7 @@ function search() {
     return false;
 }
 
-function dropdown(id, class_, displayName, selectValues, selectText) {
+function dropdown(id, class_, displayName, selectValues, selectText, defaultValue) {
     const selectLabel = document.createElement("label");
     selectLabel.setAttribute("for", id);
     selectLabel.setAttribute("class", class_);
@@ -99,7 +100,7 @@ function dropdown(id, class_, displayName, selectValues, selectText) {
     select.setAttribute("class", class_);
     const wildcard = document.createElement("option");
     wildcard.setAttribute("value", "*");
-    wildcard.setAttribute("selected", "true");
+    if (typeof defaultValue == 'undefined') wildcard.setAttribute("selected", "true");
     wildcard.appendChild(document.createTextNode("-all-"));
     select.appendChild(wildcard);
     for (const selectValue of selectValues) {
@@ -107,6 +108,7 @@ function dropdown(id, class_, displayName, selectValues, selectText) {
 
         const option = document.createElement("option");
         option.setAttribute("value", selectValue);
+        if (defaultValue === selectValue) option.setAttribute("selected", "true");
         option.appendChild(document.createTextNode(displayValue));
         select.appendChild(option);
     }
@@ -114,10 +116,8 @@ function dropdown(id, class_, displayName, selectValues, selectText) {
 }
 
 function setupForm() {
-    //const search_options = document.getElementById("search-options");
     const search_options = document.getElementById("options");
     search_options.innerHTML = '';
-    //const filter_options = document.getElementById("filter-options");
     const filter_options = document.getElementById("options");
     filter_options.innerHTML = '';
 
@@ -133,6 +133,7 @@ function setupForm() {
             options.filterFieldsVisible[filterField],
             options.filters[filterField],
             options.filtersVisible[filterField],
+            options.defaultFilter[filterField],
         );
         for (const x of filterSelect) filter_options.appendChild(x);
     }

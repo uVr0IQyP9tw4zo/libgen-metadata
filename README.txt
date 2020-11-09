@@ -12,8 +12,12 @@ Generates metadata indexes for the library genesis project. To run:
     /output/lg_simple.csv.gz
   - HTML search site. (allows search, gives download links) Entirely self-contained except the actual books. Very slow to load currently. 140s Chrome, 18s Firefox. However, fast search (100ms)
     /output/site
-3. (Optional) Delete source_data/torrent.csv.gz and output/torrent.csv.gz. Run 'make.sh' again--this will re-generate the magnet links in about a day.
-4. If wanted, download all of libgen using torrents/IPFS, and modify search_libgen.js to add a link to your local version. Now the search site will point to your local version, and you can distribute the whole thing together.
+4. (Optional) If you have a local copy of libgen.txt (~500GB):
+  - Edit python_server/server.py to point to correct locations of libgen.txt, and output/site
+  - Run 'python python_server/server.py'
+  - Access http://localhost:5000/ in your browser. Now you can search for books, and also read them.
+5. (Optional) Delete source_data/torrent.csv.gz and output/torrent.csv.gz. Run 'make.sh' again--this will re-generate the magnet links in about a day.
+6. If wanted, download all of libgen using torrents/IPFS, and modify search_libgen.js to add a link to your local version. Now the search site will point to your local version, and you can distribute the whole thing together.
 
 Required data in source_data (download this first).
 

@@ -27,13 +27,43 @@ OPTIONS = {
     "searchFieldsVisible": { x:y for x,y in DISPLAY.items() if x in SEARCH_FIELDS },
     "displayFieldsVisible": { x:x for x in WHITELIST },
     "filters": {},
+    "batchedData": True,
     "filtersVisible": {
         "collection": {
             "lg": "Nonfiction",
             "ff": "Fiction",
+        },
+    },
+    "defaultFilters": {
+        "language": "English",
+    }
+}
+
+LOCAL_WHITELIST = ["collection", "id", "md5", "ipfs_cid", "language", "extension", "filesize", "author", "title", "series", "year", "torrent_group", "torrent_file_num", "text_available"]
+LOCAL_FILTER_FIELDS = ["collection", "language", "extension", "text_available"]
+LOCAL_OPTIONS = {
+    "filterFields": LOCAL_FILTER_FIELDS,
+    "searchFields": SEARCH_FIELDS,
+    "displayFields": LOCAL_WHITELIST,
+    "filterFieldsVisible": {**{ x:y for x,y in DISPLAY.items() if x in LOCAL_FILTER_FIELDS }, **{"text_available": "Text Available"}},
+    "searchFieldsVisible": { x:y for x,y in DISPLAY.items() if x in SEARCH_FIELDS },
+    "displayFieldsVisible": { x:x for x in LOCAL_WHITELIST },
+    "filters": {},
+    "batchedData": True,
+    "filtersVisible": {
+        "collection": {
+            "lg": "Nonfiction",
+            "ff": "Fiction",
+        },
+        "text_available": {
+            "yes": "Yes",
+            "no": "No",
         }
     },
-    "batchedData": True,
+    "defaultFilters": {
+        "language": "English",
+        "text_available": "yes",
+    },
 }
 
 if __name__ == "__main__":
@@ -67,6 +97,16 @@ if __name__ == "__main__":
     for i in range(data_length):
         md5_lookup[(data["collection"][i], data["md5"][i])].append(i)
     #print(collections.Counter(len(x) for x in md5_lookup.values()))
+
+    # Add boolean "text_available" column
+    if os.path.exists("source_data/text.files.gz"):
+        data["text_available"] = ["no"]*data_length
+        for line in gzip.open("source_data/text.files.gz", "rt", encoding="utf-8"):
+            line = line.strip()
+            collection, filename = line.split()
+            md5 = filename.split("/")[1].split(".")[0]
+            for i in md5_lookup[(collection, md5)]:
+                data["text_available"][i] = "yes"
 
     # Add ipfs_cid column
     cids = {}
@@ -116,9 +156,11 @@ if __name__ == "__main__":
     # Done building data
     assert all(k in data and len(data[k]) == data_length for k in WHITELIST)
     options = copy.deepcopy(OPTIONS)
-    for f in FILTER_FIELDS:
+    local_options = copy.deepcopy(LOCAL_OPTIONS)
+    for f in set(FILTER_FIELDS)|set(LOCAL_FILTER_FIELDS):
         most_common = [x for x,count in collections.Counter(data[f]).most_common(8) if x.strip() != ""]
         options["filters"][f] = sorted(most_common)
+        local_options["filters"][f] = sorted(most_common)
 
     if False:
         t_orig, t_dedup, t_compressed = 0, 0, 0
@@ -143,20 +185,29 @@ if __name__ == "__main__":
     # One file per 100K records per field
     # Load time     55s         12s
     # Search time   200ms       100ms
-    keys = [x for x in WHITELIST if x in data.keys()]
     with open("output/site/js/corpus.js", "w") as f:
         data_init = { k: [] for k in WHITELIST }
         print("const corpus={{\"options\":{},\"data\":{}, \"infohash\":{}}};".format(json.dumps(options), json.dumps(data_init), json.dumps(infohash)), file=f)
+    with open("output/site/js/corpus-local.js", "w") as f:
+        data_init = { k: [] for k in LOCAL_WHITELIST }
+        print("const corpus={{\"options\":{},\"data\":{}, \"infohash\":{}}};".format(json.dumps(local_options), json.dumps(data_init), json.dumps(infohash)), file=f)
 
     corpus_files = ["../js/corpus.js"]
-    for i, key in enumerate(keys):
-        for batch, batch_start in enumerate(range(0, data_length, BATCH_SIZE)):
-            d = data[key][batch_start:batch_start+BATCH_SIZE]
-            json_data = json.dumps(d, separators=(",",":"))
-            filename = "corpus_{}.{}.js".format(key, batch)
-            with open("output/site/js/{}".format(filename), "w") as f:
-                print("corpus.data['{key}'][{batch}] = {str_data};".format(key=key, batch=batch, str_data=json.dumps(json_data)), file=f)
-                corpus_files.append("../js/{}".format(filename))
+    local_corpus_files = ["../js/corpus-local.js"]
+    for i, key in enumerate(data.keys()):
+        if key in WHITELIST or key in LOCAL_WHITELIST:
+            for batch, batch_start in enumerate(range(0, data_length, BATCH_SIZE)):
+                d = data[key][batch_start:batch_start+BATCH_SIZE]
+                json_data = json.dumps(d, separators=(",",":"))
+                del d
+                filename = "corpus_{}.{}.js".format(key, batch)
+                with open("output/site/js/{}".format(filename), "w") as f:
+                    print("corpus.data['{key}'][{batch}] = {str_data};".format(key=key, batch=batch, str_data=json.dumps(json_data)), file=f)
+                del json_data
+                if key in WHITELIST:
+                    corpus_files.append("../js/{}".format(filename))
+                if key in LOCAL_WHITELIST:
+                    local_corpus_files.append("../js/{}".format(filename))
 
     with open("static/html/index.html", "r") as template:
         with open("output/site/html/index.html", "w") as out:
@@ -166,3 +217,13 @@ if __name__ == "__main__":
                         print('  <script type="text/javascript" src="{}"></script>'.format(corpus_file), file=out)
                 else:
                     out.write(line)
+    if "text_available" in data:
+        assert all(k in data for k in LOCAL_WHITELIST)
+        with open("static/html/index-local.html", "r") as template:
+            with open("output/site/html/index-local.html", "w") as out:
+                for line in template:
+                    if "INSERT CORPUS HERE" in line:
+                        for corpus_file in local_corpus_files:
+                            print('  <script type="text/javascript" src="{}"></script>'.format(corpus_file), file=out)
+                    else:
+                        out.write(line)
